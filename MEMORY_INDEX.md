@@ -29,3 +29,4 @@ All discussions live in `convos/{user}/`. **When starting a new topic, add a row
 | Date | User | Topic | Status | SUMMARY | LOG |
 |------|------|-------|--------|---------|-----|
 | 26-10-23 | julian | Epistemic Memory setup for this ARENA fork | Done; waiting for Julian to review the diff | [SUMMARY](convos/julian/26-10-23_epistemic_memory_setup_SUMMARY.md) | [LOG](convos/julian/26-10-23_epistemic_memory_setup_LOG.md) |
+| 26-10-23 | julian | ARENA setup: venv, packages, VS Code, imports (all setup questions go here) | Ongoing; import error fixed, ipykernel/`uv add` answered | [SUMMARY](convos/julian/26-10-23_arena_setup_SUMMARY.md) | [LOG](convos/julian/26-10-23_arena_setup_LOG.md) |
