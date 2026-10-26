@@ -284,10 +284,156 @@ def batched_logsumexp(matrix: Tensor) -> Tensor:
     - https://leimao.github.io/blog/LogSumExp/
     - https://gregorygundersen.com/blog/2020/02/09/log-sum-exp/
     """
-    print("bathc", matrix.shape)
     row_max = t.max(matrix, dim=-1)[0]
-    print(row_max.shape)
-    t.exp(matrix - row_max).sum(dim=-1).log()
+    return t.exp(matrix - row_max.unsqueeze(-1)).sum(dim=-1).log() + row_max
 
 
 tests.test_batched_logsumexp(batched_logsumexp)
+
+
+# %%
+def batched_softmax(matrix: Tensor) -> Tensor:
+    """For each row of the matrix, compute softmax(row).
+
+    Do this without using PyTorch's softmax function.
+    Instead, use the definition of softmax: https://en.wikipedia.org/wiki/Softmax_function
+
+    matrix: shape (batch, n)
+
+    Return: (batch, n). For each i, out[i] should sum to 1.
+    """
+    exp = matrix.exp()
+    return exp / t.sum(exp, dim=-1, keepdim=True)
+
+
+tests.test_batched_softmax(batched_softmax)
+
+
+# %%
+def batched_logsoftmax(matrix: Tensor) -> Tensor:
+    """Compute log(softmax(row)) for each row of the matrix.
+
+    matrix: shape (batch, n)
+
+    Return: (batch, n).
+
+    Do this without using PyTorch's logsoftmax function.
+    For each row, subtract the maximum first to avoid overflow if the row contains large values.
+    """
+    logsumexp = batched_logsumexp(matrix)
+    return matrix - logsumexp.unsqueeze(-1)
+
+
+tests.test_batched_logsoftmax(batched_logsoftmax)
+
+
+# %%
+def batched_cross_entropy_loss(logits: Tensor, true_labels: Tensor) -> Tensor:
+    """Compute the cross entropy loss for each example in the batch.
+
+    logits: shape (batch, classes). logits[i][j] is the unnormalized prediction for example i and class j.
+    true_labels: shape (batch, ). true_labels[i] is an integer index representing the true class for example i.
+
+    Return: shape (batch, ). out[i] is the loss for example i.
+
+    Hint: convert the logits to log-probabilities using your batched_logsoftmax from above.
+    Then the loss for an example is just the negative of the log-probability that the model assigned to the true class. Use torch.gather to perform the indexing.
+    """
+    assert logits.shape[0] == true_labels.shape[0]
+    assert true_labels.max() < logits.shape[1]
+
+    log_probs = batched_logsoftmax(logits)
+    x = -t.gather(log_probs, -1, true_labels.unsqueeze(-1))
+    return x.squeeze(-1)
+
+
+tests.test_batched_cross_entropy_loss(batched_cross_entropy_loss)
+
+
+# %%
+def collect_rows(matrix: Tensor, row_indexes: Tensor) -> Tensor:
+    """Return a 2D matrix whose rows are taken from the input matrix in order according to row_indexes.
+
+    matrix: shape (m, n)
+    row_indexes: shape (k,). Each value is an integer in [0..m).
+
+    Return: shape (k, n). out[i] is matrix[row_indexes[i]].
+    """
+    return matrix[row_indexes]
+
+
+tests.test_collect_rows(collect_rows)
+
+
+# %%
+def collect_columns(matrix: Tensor, column_indexes: Tensor) -> Tensor:
+    """Return a 2D matrix whose columns are taken from the input matrix in order according to column_indexes.
+
+    matrix: shape (m, n)
+    column_indexes: shape (k,). Each value is an integer in [0..n).
+
+    Return: shape (m, k). out[:, i] is matrix[:, column_indexes[i]].
+    """
+    assert column_indexes.max() < matrix.shape[1]
+
+    return matrix[:, column_indexes]
+
+
+tests.test_collect_columns(collect_columns)
+
+## Einsum
+
+
+# %%
+def einsum_trace(mat: np.ndarray):
+    """
+    Returns the same as `np.trace`.
+    """
+    return ein.einsum(mat, "i i -> ")
+
+
+tests.test_einsum_trace(einsum_trace)
+
+
+# %%
+def einsum_mv(mat: np.ndarray, vec: np.ndarray):
+    """
+    Returns the same as `np.matmul`, when `mat` is a 2D array and `vec` is 1D.
+    """
+    return ein.einsum(mat, vec, "i j, j -> i")
+
+
+tests.test_einsum_mv(einsum_mv)
+
+
+# %%
+def einsum_mm(mat1: np.ndarray, mat2: np.ndarray):
+    """
+    Returns the same as `np.matmul`, when `mat1` and `mat2` are both 2D arrays.
+    """
+    return ein.einsum(mat1, mat2, "i j, j k -> i k")
+
+
+tests.test_einsum_mm(einsum_mm)
+
+
+# %%
+def einsum_inner(vec1: np.ndarray, vec2: np.ndarray):
+    """
+    Returns the same as `np.inner`.
+    """
+    return ein.einsum(vec1, vec2, "i, i -> ")
+
+
+tests.test_einsum_inner(einsum_inner)
+
+
+# %%
+def einsum_outer(vec1: np.ndarray, vec2: np.ndarray):
+    """
+    Returns the same as `np.outer`.
+    """
+    return ein.einsum(vec1, vec2, "i, j -> i j")
+
+
+tests.test_einsum_outer(einsum_outer)
