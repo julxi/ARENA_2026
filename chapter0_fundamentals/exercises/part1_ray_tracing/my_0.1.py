@@ -370,3 +370,44 @@ dists = raytrace_mesh_video(rays, triangles, rotation_matrix, raytrace_mesh, num
 dists = ein.rearrange(dists, "frames (y z) -> frames y z", y=num_pixels_y)
 
 display_video(dists)
+
+
+# %%
+def raytrace_mesh_gpu(
+    rays: Float[Tensor, "nrays rayPoints=2 dims=3"],
+    triangles: Float[Tensor, "ntriangles trianglePoints=3 dims=3"],
+) -> Float[Tensor, " nrays"]:
+    """
+    For each ray, return the distance to the closest intersecting triangle, or infinity.
+
+    All computations should be performed on the GPU.
+    """
+    nrays = rays.size(0)
+    ntriangles = triangles.size(0)
+
+    rays = rays.cuda()
+    triangles = triangles.cuda()
+
+    A, B, C = ein.repeat(triangles, "ntriangles pts dims -> pts ntriangles nrays dims", nrays=nrays)
+
+    O, D = ein.repeat(rays, "nrays pts dims -> pts ntriangles nrays dims", ntriangles=ntriangles)
+
+    mat = t.stack((-D, B - A, C - A), dim=-1)
+    dets = t.linalg.det(mat)
+    is_singular = dets.abs() < 1e-6
+    mat[is_singular] = t.eye(3).cuda()
+
+    vec = O - A
+
+    sol = t.linalg.solve(mat, vec)
+    s, u, v = sol.unbind(dim=-1)
+
+    # s *= D[..., 0]
+    s[(s < 0) | (u < 0) | (v < 0) | (u + v > 1) | is_singular] = float('inf')
+
+    return ein.reduce(s, "ntriangle nrays -> nrays", "min").cpu()
+
+
+dists = raytrace_mesh_video(rays, triangles, rotation_matrix, raytrace_mesh_gpu, num_frames)
+dists = ein.rearrange(dists, "frames (y z) -> frames y z", y=num_pixels_y)
+display_video(dists)
