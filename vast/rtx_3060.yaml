@@ -1,0 +1,40 @@
+# Machine config for `vast/arena_vast.py --config rtx_3060` (the default). One file per GPU type:
+# copy this file to add another card (e.g. rtx_3090.yaml) and adjust gpu_name, min_gpu_ram and prices.
+# Field meanings: see VastConfig in vast/arena_vast.py.
+
+# vast.ai GPU name, spaces as underscores. ARENA's baseline card (12 GB VRAM).
+gpu_name: RTX_3060
+min_gpu_ram: 12
+
+# $/hour including storage. Offers above max_price are never shown; renting one above warn_price
+# asks for confirmation first. On 26-10-27 the cheapest matching RTX 3060 offers cost $0.065-0.10/hour.
+max_price: 0.30
+warn_price: 0.15
+
+# Disk in GB: the venv is several GB (all of requirements.txt), plus Hugging Face models from chapter 1.
+disk: 80
+
+# Must ship uv (vast.ai's base images do). CUDA 13 because torch>=2.11 wheels on PyPI are built for it.
+image: vastai/base-image:cuda-13.0.3-auto
+min_cuda: 13.0
+
+# Carried over from the SPD project's vast config.
+min_reliability: 0.95
+datacenter_only: false
+# A host in China could not reach huggingface.co (DNS poisoned, SPD project, 26-10-26).
+excluded_countries: [CN]
+
+# Advertised download speed in Mbps (ARENA recommends >= 100). Self-reported by the host, so it does
+# not guarantee a fast install; max_install_minutes is the real check.
+min_inet_down: 100
+
+# Sort order; the first offer is rented.
+#   dlperf_per_dphtotal-  best deep-learning performance per dollar
+#   dph_total             cheapest first
+#   reliability-          most reliable first
+sort: dlperf_per_dphtotal-
+n_offers: 15
+
+# How long remote_setup.sh (venv + all of requirements.txt) may take before the host is rejected and
+# blacklisted. SPD used 10 min for a smaller install; this one includes jax, mujoco etc.
+max_install_minutes: 15

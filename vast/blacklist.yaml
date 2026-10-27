@@ -1,0 +1,12 @@
+# vast.ai hosts that arena_vast.py never rents again, whatever the machine config.
+# A host is one operator (host_id), who may run several machines. The failures that land a host here
+# (ssh never connecting, the install crawling) come from the operator's network, so the whole host
+# is excluded. arena_vast.py appends hosts itself; add one by hand when a rental turns out bad later
+# (`offers` and `status` print host ids). Delete an entry to rent that host again.
+# Entry format (replace `hosts: []` by a list if it is empty):
+#   hosts:
+#   - host_id: 124072
+#     date: 26-10-06
+#     reason: install over 15 min (instance 1234567)
+# This file is rewritten when a host is added: put notes in `reason`, not in comments.
+hosts: []

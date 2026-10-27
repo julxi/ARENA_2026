@@ -72,3 +72,31 @@ C: (transcribed from chat) I have selected `.venc (3.13.12) ./.venv/bin/python`.
 **Why selecting the interpreter didn't help.** In VS Code, the interpreter (used by Pylance and the Run button) and the kernel (used by the interactive window that `# %%` cells run in) are chosen separately. The Jupyter extension picked 3.14.3 as the interactive window's kernel. [assumed: standard VS Code/Jupyter behavior; I can't see Julian's VS Code state]
 
 **Fix:** in the dialog, click **Change Kernel** (not Install), then choose "Python Environments" → `.venv (3.13.12)`, or "Jupyter Kernel" → `arena-env`. If the dialog is already gone, use the kernel picker at the top right of the interactive window. "Install" would put ipykernel into the 3.14 Python, which has none of ARENA's packages (torch, einops, ...), so the next import would fail.
+
+---
+
+C: (transcribed from chat) I'll need a gpu for some of thees exercises soon. Are there any prebuild options?
+
+---
+
+26-10-27, Claude Opus 5.5 — *cloud GPU options for ARENA*
+
+I have read MEMORY_INDEX.md, this topic's SUMMARY, and ARENA's setup page `infrastructure/core/django_run/pages/content/setup_instructions.md` (the source of the "Setup" page on ARENA's website). This machine has no NVIDIA GPU: `nvidia-smi` is not found. [verified: 26-10-27]
+
+**What ARENA itself documents** (setup_instructions.md, section "Cloud VM setup"):
+- **Colab**: every exercise day has an exercises Colab and a solutions Colab linked at the top of its web page. Free tier has a GPU, no setup needed. The catch: you work in the notebook, not in your `my_0.x.py` files in this repo.
+- **Rented VMs**, connected via VS Code Remote-SSH, with step-by-step instructions for each: **VastAI** (ARENA calls it cheapest and easy to pause), **RunPod** (mid-range, offers PyTorch templates, and `install.sh` defaults to `--platform runpod`), **Lambda Labs** (easiest, PyTorch preinstalled, most expensive, and stopping an instance loses its data).
+- Recommended hardware: 8GB+ VRAM, 12GB+ ideal. ARENA suggests an RTX 3060 or RTX A4000; most of the course assumes that class of card, and only some chapter 4 (alignment science) sections need an A100. ARENA's price table gives about $0.10–0.30/hour for these cards on VastAI. [assumed: ARENA's figures, date unknown; check current prices]
+- After connecting, `install.sh` installs Miniconda and creates the `arena-env` conda env.
+
+**Problem in ARENA's instructions for Julian's setup:** the "Workspace setup" step clones `callummcdougall/ARENA_materials`. Julian should clone their own fork (`https://github.com/julxi/ARENA_2026.git`, the `origin` remote) instead, so `my_*.py` files and `convos/` are on the VM. Work done on the VM must be committed and pushed before the instance is destroyed. [concluded: VM disks are temporary on all three providers unless a persistent volume is configured]
+
+**When the GPU is needed** [assumed: from section titles and ARENA's notes, not checked exercise by exercise]: 0.1 (ray tracing) and 0.2 (CNNs) run on CPU. Training in 0.3 (optimization) and 0.5 (VAEs/GANs) is much faster on a GPU, and the third part of 0.3 (distributed training) needs a VM with several GPUs. Chapter 1 (transformer interpretability) onward needs a GPU.
+
+**My recommendation:** Colab for occasional training cells in chapter 0. Rent a VM (VastAI or RunPod) when starting chapter 1, because working in your own files over Remote-SSH fits the current workflow better than notebooks.
+
+---
+
+26-10-27, Claude Opus 5.5 — *GPU work moved to its own topic*
+
+At Julian's request, VastAI setup continues in `convos/julian/26-10-27_vastai_gpu_setup_LOG.md`. OUTDATED: in the entry *cloud GPU options for ARENA*, "clone your own fork instead" is incomplete: `install.sh` hardcodes the folder name `ARENA_materials`, so the fork must be cloned into a folder with that name. ARENA's torch also needs a host driver with CUDA ≥ 13. Details are in the new topic.
