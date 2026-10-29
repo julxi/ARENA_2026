@@ -192,3 +192,48 @@ I have read Julian's answers to Q1–Q10 above, `run_vast.py`/`vast_config.yaml`
 
 - Run a first real `up` → work → `down` cycle (≈ 20 min, a few cents on a 3060).
 - Note: at the time of writing, the SPD instance 58003044 (RTX 4090, $0.662/hr, label `spd-provision-s-2c37c396`) was still running. `arena_vast.py` leaves it alone.
+
+---
+
+C: (transcribed from chat) I tried up but it failed for the selected host:
+
+(Julian pasted the `up` output: offer 51634234, RTX 3060 in Thailand, host 594651, became instance 58009521. The image pulled, then the status turned to `created` with "Error response from daemon: failed to create task for container: … OCI runtime create failed: … failed to inject CDI devices: unresolvable CDI devices …/gpu=1", repeated on every poll.)
+
+---
+
+26-10-27, Claude Opus 5.5 — *fail fast when Docker can't start the container*
+
+Diagnosis: the host's Docker could not attach its GPU to the container (a CDI device = NVIDIA's Container Device Interface entry for the GPU). This is the host's fault, and vast.ai doesn't retry. `_wait_until_running` only recognised the statuses `missing`/`exited` as dead, so it would have waited out the full 900 s boot timeout before blacklisting the host and destroying the instance. That code path still works; it is just slow. [concluded: from the pasted log and `status` showing 58009521 stuck in `created`; at 21:33 Julian's `up` process was still waiting]
+
+Fix in `vast/arena_vast.py`, `_wait_until_running`: status `created` with a message containing "Error response from daemon" now raises `HostFailure` at once (blacklist + destroy). Status `loading` with such a message is still tolerated, in case vast.ai is retrying a pull. [verified: unit test feeding the exact message from the paste, 26-10-27] Still not verified: a complete successful `up` on a real host.
+
+---
+
+C: (transcribed from chat) I tried this to get rid of the instance:
+
+(Julian pasted a traceback: `down` failed in `_tree_files(remote=True)`, because `ssh arena "cd /root/ARENA_2026 && git ls-files …"` returned exit 255. The instance never booted, so there was nothing to ssh into.)
+
+---
+
+26-10-27, Claude Opus 5.5 — *`down --no-pull` for machines that never booted*
+
+State at 21:35: Julian's `up` process had ended (presumably Ctrl+C, so the blacklist + destroy path never ran), and instance 58009521 still existed in status `created`. Julian's intent was to get rid of it, so I destroyed it (vast.ai confirmed "destroying instance 58009521.") and added host 594651 to `vast/blacklist.yaml`, as `up` would have done. I also removed the stale `~/.ssh/config.d/arena.conf`, which the failed `down` had pointed at that instance. [verified: `status` afterwards lists only the SPD instance]
+
+The `down` failure itself was safe (it failed before destroying anything), but there was no way to destroy an unpullable machine except the raw `vastai` CLI. Changes in `vast/arena_vast.py`:
+- `down` checks the status first. If the instance isn't `running`, it stops with a message ("nothing to pull from; nothing destroyed") naming the two ways out: `down --no-pull` if it never booted, `vastai start instance <id>` then `down` if it was stopped. A stopped instance still holds its data, so destroying it without pulling must stay explicit.
+- New `down --no-pull`: asks "DESTROY … WITHOUT pulling?", then destroys and removes the ssh alias.
+- If the pull fails on a running instance, the error now says "Nothing destroyed" and points at `--no-pull`, instead of showing a bare traceback.
+- The Ctrl+C message in `up` now points at `down` / `down --no-pull`.
+[verified: test with a stand-in instance in status `created`: plain `down` refuses and destroys nothing; `--no-pull` answered "n" destroys nothing; answered "y" destroys]
+
+Side observation: for the never-booted instance, `vastai ssh-url` returned the proxy address (`ssh5.vast.ai:20962`), not a direct ip:port. That makes sense when the direct port mapping never came up. It may matter later if a booted instance also gets a proxy address. [assumed: unverified for running instances]
+
+---
+
+C: (transcribed from chat) if you type down --no-pull, you don't need to ask again
+
+---
+
+26-10-27, Claude Opus 5.5 — *`--no-pull` without confirmation*
+
+Done: `down --no-pull` now destroys straight away, with no prompt; typing the flag counts as the confirmation. Plain `down` still asks once before pulling and destroying. This supersedes the "asks DESTROY … WITHOUT pulling?" behaviour described in entry *`down --no-pull` for machines that never booted*.

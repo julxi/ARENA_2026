@@ -379,15 +379,26 @@ def _wait_until_running(instance_id: int) -> None:
     while time.time() < deadline:
         instance = _show_instance(instance_id)
         status = instance["actual_status"]
+        message = (instance["status_msg"] or "no message").strip()
         if status == "running":
             return
         if status in DEAD_STATUSES:
             raise HostFailure(
                 f"instance went '{status}' while booting",
-                f"Instance {instance_id} is '{status}' ({instance['status_msg'] or 'no message'}). "
+                f"Instance {instance_id} is '{status}' ({message}). "
                 f"The host has dropped off vast.ai's control plane.",
             )
-        log(f"Instance status: {status} ({instance['status_msg'] or 'no message'})")
+        # The container exists but Docker on the host refused to start it, and vast.ai does not
+        # retry: e.g. "OCI runtime create failed ... unresolvable CDI devices ..." (the host's GPU
+        # could not be attached; instance 58009521, 26-10-27). Waiting out READY_TIMEOUT_S only
+        # bills for a machine that will never boot.
+        if status == "created" and "Error response from daemon" in message:
+            raise HostFailure(
+                f"container failed to start: {message[:120]}",
+                f"Instance {instance_id}: Docker on the host could not start the container:\n"
+                f"{message}",
+            )
+        log(f"Instance status: {status} ({message})")
         time.sleep(POLL_INTERVAL_S)
     raise HostFailure(
         f"not running after {READY_TIMEOUT_S}s",
@@ -673,8 +684,8 @@ def cmd_up(config: VastConfig, args: argparse.Namespace) -> None:
         raise
     except BaseException:
         log(
-            f"Instance {instance_id} is still running and billing. Retry by hand, or destroy it: "
-            f"vastai destroy instance {instance_id} -y"
+            f"Instance {instance_id} is still rented and billing. Retry by hand, or destroy it "
+            f"with `down` (`down --no-pull` if it never booted)"
         )
         raise
 
@@ -739,16 +750,38 @@ def cmd_pull(_config: VastConfig | None, _args: argparse.Namespace) -> None:
     log("Pulled (no local file was overwritten).")
 
 
-def cmd_down(_config: VastConfig | None, _args: argparse.Namespace) -> None:
-    """Pull, then destroy. Destroys nothing if the pull fails: the machine's work would be lost."""
-    instance_id = _our_instance()["id"]
-    _write_ssh_config(instance_id)
-    files = _tree_files(remote=True)
-    _preview(push=False, files=files)
-    _pull(files, f"Pull these changes and then DESTROY instance {instance_id}?")
+def cmd_down(_config: VastConfig | None, args: argparse.Namespace) -> None:
+    """Pull, then destroy. Destroys nothing if the pull fails: the machine's work would be lost.
+
+    `--no-pull` is the way out for a machine that cannot be pulled from, e.g. one whose container
+    never started (instance 58009521, 26-10-27: `down` died on ssh with nothing to pull).
+    """
+    instance = _our_instance()
+    instance_id = instance["id"]
+    status = instance["actual_status"]
+    if args.no_pull:
+        # Intentionally no confirmation: typing the flag is the confirmation (Julian, 26-10-27).
+        log(f"Destroying instance {instance_id} (status '{status}') without pulling")
+    else:
+        assert status == "running", (
+            f"Instance {instance_id} is '{status}' ({instance['status_msg'] or 'no message'}), so "
+            f"there is nothing to pull from. Nothing destroyed. If it never booted: `down "
+            f"--no-pull`. If it was stopped: `vastai start instance {instance_id}`, then `down`."
+        )
+        _write_ssh_config(instance_id)
+        try:
+            files = _tree_files(remote=True)
+            _preview(push=False, files=files)
+            _pull(files, f"Pull these changes and then DESTROY instance {instance_id}?")
+        except subprocess.CalledProcessError as error:
+            raise AssertionError(
+                f"Pulling from instance {instance_id} failed ({error}). Nothing destroyed. Retry, "
+                f"or if the machine is unreachable for good: `down --no-pull`."
+            ) from error
     _destroy_instance(instance_id)
-    # A stale alias would point at an ip:port that vast.ai hands to the next renter.
-    SSH_CONFIG_PATH.unlink()
+    # A stale alias would point at an ip:port that vast.ai hands to the next renter. missing_ok
+    # because with --no-pull this run may not have written it (e.g. after a failed `up`).
+    SSH_CONFIG_PATH.unlink(missing_ok=True)
     log(f"Removed {SSH_CONFIG_PATH}")
 
 
@@ -766,7 +799,12 @@ def main() -> None:
     sub.add_parser("status", help="list instances on the account and their cost so far")
     sub.add_parser("push", help="upload local changes (asks before overwriting remote files)")
     sub.add_parser("pull", help="bring remote work back (never deletes local files)")
-    sub.add_parser("down", help="pull, then destroy the instance")
+    down = sub.add_parser("down", help="pull, then destroy the instance")
+    down.add_argument(
+        "--no-pull",
+        action="store_true",
+        help="destroy without pulling, for a machine that never booted or is unreachable",
+    )
     args = parser.parse_args()
 
     handlers = {

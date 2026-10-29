@@ -9,4 +9,8 @@
 #     date: 26-10-06
 #     reason: install over 15 min (instance 1234567)
 # This file is rewritten when a host is added: put notes in `reason`, not in comments.
-hosts: []
+hosts:
+- host_id: 594651
+  date: 26-10-27
+  reason: 'container failed to start: OCI runtime create failed, unresolvable CDI devices (GPU not attachable)
+    (instance 58009521, RTX 3060, Thailand, TH)'
